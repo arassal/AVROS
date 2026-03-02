@@ -158,9 +158,9 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 10
-      height: 10
-      resolution: 0.1
+      width: 50
+      height: 50
+      resolution: 0.2
       robot_radius: 0.8
       plugins: ["voxel_layer", "inflation_layer"]
 

@@ -3,12 +3,14 @@
 Launches:
   - Everything from localization.launch.py (sensors + EKF + navsat)
   - actuator_node (cmd_vel -> Teensy UDP)
+  - route_server (nav2_route graph-based road planner — must start before Nav2)
   - Nav2 (planner, controller, costmaps, behavior tree, lifecycle manager)
-  - route_server (nav2_route graph-based planner)
 
-Note: On Jazzy, nav2_bringup/navigation_launch.py already includes route_server
-in its lifecycle list. The separate route_server + lifecycle_manager_route below
-are for Humble where navigation_launch.py does not include route_server.
+Launch ordering: route_server must be active before bt_navigator activates,
+because the BT XML contains a ComputeRoute node that validates the
+compute_route action server at load time. On Humble, nav2_bringup does not
+include route_server (Jazzy does), so we launch it separately with a
+lifecycle manager and delay Nav2 bringup to ensure correct ordering.
 """
 
 import os
@@ -42,36 +44,6 @@ def generate_launch_description():
             'graph_filepath': graph_file,
         },
         convert_types=True,
-    )
-
-    route_server_node = Node(
-        package='nav2_route',
-        executable='route_server',
-        name='route_server',
-        parameters=[
-            configured_params,
-            {'use_sim_time': LaunchConfiguration('use_sim_time')},
-        ],
-        output='screen',
-    )
-
-    # Delay lifecycle manager so route_server has time to register its
-    # lifecycle services with DDS before the manager tries to configure it.
-    route_lifecycle_manager = TimerAction(
-        period=5.0,
-        actions=[
-            Node(
-                package='nav2_lifecycle_manager',
-                executable='lifecycle_manager',
-                name='lifecycle_manager_route',
-                parameters=[{
-                    'autostart': True,
-                    'node_names': ['route_server'],
-                    'bond_timeout': 10.0,
-                }],
-                output='screen',
-            ),
-        ],
     )
 
     return LaunchDescription([
@@ -108,24 +80,54 @@ def generate_launch_description():
             output='screen',
         ),
 
-        # Nav2 bringup (planner, controller, costmaps, BT navigator, etc.)
-        IncludeLaunchDescription(
-            PythonLaunchDescriptionSource(
-                os.path.join(
-                    get_package_share_directory('nav2_bringup'),
-                    'launch', 'navigation_launch.py'
-                )
-            ),
-            launch_arguments={
-                'use_sim_time': LaunchConfiguration('use_sim_time'),
-                'params_file': configured_params,
-                'autostart': 'true',
-            }.items(),
+        # Route server (must be active before bt_navigator loads the BT XML)
+        Node(
+            package='nav2_route',
+            executable='route_server',
+            name='route_server',
+            parameters=[
+                configured_params,
+                {'use_sim_time': LaunchConfiguration('use_sim_time')},
+            ],
+            output='screen',
         ),
 
-        # Route server (nav2_route — graph-based road planner)
-        route_server_node,
+        # Lifecycle manager for route_server (2s delay for DDS discovery)
+        TimerAction(
+            period=2.0,
+            actions=[
+                Node(
+                    package='nav2_lifecycle_manager',
+                    executable='lifecycle_manager',
+                    name='lifecycle_manager_route',
+                    parameters=[{
+                        'autostart': True,
+                        'node_names': ['route_server'],
+                        'bond_timeout': 10.0,
+                    }],
+                    output='screen',
+                ),
+            ],
+        ),
 
-        # Lifecycle manager for route_server (delayed 5s for DDS discovery)
-        route_lifecycle_manager,
+        # Nav2 bringup (delayed 8s so route_server is active first)
+        # bt_navigator validates compute_route action server at load time
+        TimerAction(
+            period=8.0,
+            actions=[
+                IncludeLaunchDescription(
+                    PythonLaunchDescriptionSource(
+                        os.path.join(
+                            get_package_share_directory('nav2_bringup'),
+                            'launch', 'navigation_launch.py'
+                        )
+                    ),
+                    launch_arguments={
+                        'use_sim_time': LaunchConfiguration('use_sim_time'),
+                        'params_file': configured_params,
+                        'autostart': 'true',
+                    }.items(),
+                ),
+            ],
+        ),
     ])

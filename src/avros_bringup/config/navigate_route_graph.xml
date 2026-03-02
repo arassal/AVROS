@@ -1,18 +1,15 @@
 <!--
-  Navigation BT for AVROS (Humble-compatible).
+  Navigation BT for AVROS (Humble-compatible, BehaviorTree.CPP v3).
 
-  Uses ComputeRoute to find the road-graph path, then extracts the first
-  route node and plans a first-mile segment from the robot to that node
-  with ComputePathToPose (SmacPlannerHybrid).  FollowPath drives the
-  first-mile path first; on completion the BT re-ticks and now the robot
-  is on the graph, so the route path itself becomes drivable.
+  Fallback planner order:
+    1. ComputeRoute   — graph-based road path via nav2_route (fast, follows campus roads)
+    2. ComputePathToPose — freespace Dubin path via SmacPlannerHybrid (works anywhere)
 
-  Fallback order:
-    1. ComputeRoute  (graph path — fast, road-following)
-    2. ComputePathToPose (freespace — works anywhere, first-mile bridge)
+  ComputeRoute plans along the pre-built campus road graph (551 nodes, 1392 edges).
+  If the robot is too far from the graph or no route exists, ComputePathToPose
+  provides a freespace fallback.
 
-  No spin/backup recovery — Ackermann vehicle cannot rotate in place.
-  BehaviorTree.CPP v3 format (Humble).
+  No spin recovery — Ackermann vehicle cannot rotate in place.
 -->
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
@@ -26,7 +23,9 @@
             </Inverter>
             <IsPathValid path="{path}"/>
           </ReactiveSequence>
-          <!-- Primary: freespace plan from robot to goal (always starts at robot) -->
+          <!-- Primary: road-graph path (starts at nearest graph node) -->
+          <ComputeRoute goal="{goal}" path="{path}" use_poses="true"/>
+          <!-- Fallback: freespace path (starts at robot, works anywhere) -->
           <ComputePathToPose goal="{goal}" path="{path}" planner_id="GridBased"/>
         </Fallback>
       </RateController>
