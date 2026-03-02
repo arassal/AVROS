@@ -45,9 +45,13 @@ ros2 launch avros_bringup webui.launch.py
 # Full autonomous stack
 ros2 launch avros_bringup navigation.launch.py
 
-# Plan a route
-ros2 service call /avros/plan_route avros_msgs/srv/PlanRoute \
-  '{destination_lat: 34.058, destination_lon: -117.82}'
+# Send a navigation goal (click "Nav2 Goal" in RViz or use CLI)
+ros2 action send_goal /navigate_to_pose nav2_msgs/action/NavigateToPose \
+  "{pose: {header: {frame_id: 'map'}, pose: {position: {x: 50.0, y: 30.0}}}}"
+
+# Regenerate campus road graph (offline, requires osmnx)
+python3 src/avros_navigation/scripts/generate_graph.py \
+  --output src/avros_bringup/config/cpp_campus_graph.geojson
 
 # E-stop
 ros2 topic pub --once /avros/actuator_command avros_msgs/msg/ActuatorCommand \
@@ -73,7 +77,7 @@ AVROS/
 │   ├── avros_control/            # ament_python — actuator_node (cmd_vel → Teensy UDP)
 │   ├── avros_webui/              # ament_python — webui_node (phone joystick → ActuatorCommand)
 │   │   └── static/               # index.html, app.js (nipplejs joystick UI)
-│   └── avros_navigation/         # ament_python — route_planner_node (OSMnx → Nav2)
+│   └── avros_navigation/         # ament_python — generate_graph.py (offline OSMnx → GeoJSON)
 ├── firmware/                     # Teensy CAN code (unchanged from AV2.1-API)
 └── docs/
 ```
@@ -88,7 +92,7 @@ AVROS/
 | `avros_bringup` | ament_python | Launch files, URDF, all YAML configs, RViz config |
 | `avros_control` | ament_python | `actuator_node`: cmd_vel → PID → Ackermann inverse → Teensy UDP |
 | `avros_webui` | ament_python | `webui_node`: phone joystick WebSocket → ActuatorCommand (direct control) |
-| `avros_navigation` | ament_python | `route_planner_node`: GPS → OSMnx route → Nav2 waypoints |
+| `avros_navigation` | ament_python | `generate_graph.py`: offline OSMnx → nav2_route GeoJSON graph tool |
 
 No `avros_sensors` — upstream drivers used directly. Source dependencies are managed via `avros.repos` (vcstool manifest) and git-ignored. `vcs import src < avros.repos` clones `realsense-ros` (4.56.4) to `src/realsense-ros/` and the Xsens monorepo to `src/xsens_mti/` (contains both `xsens_mti_ros2_driver` and `ntrip` packages). Velodyne uses `ros-humble-velodyne` (apt).
 
@@ -184,7 +188,7 @@ Sensor mount positions in URDF (`avros.urdf.xacro`) are approximate — measure 
 | `/cmd_vel` | `geometry_msgs/Twist` | Nav2 controller / teleop_twist_keyboard |
 | `/avros/actuator_state` | `avros_msgs/ActuatorState` | actuator_node @ 20 Hz |
 | `/avros/actuator_command` | `avros_msgs/ActuatorCommand` | webui_node (direct control) / e-stop |
-| `/avros/route_waypoints` | `nav_msgs/Path` | route_planner_node |
+| `/plan_route` | `nav2_msgs/action/ComputeRoute` | route_server (nav2_route) |
 | `/velodyne_points` | `sensor_msgs/PointCloud2` | velodyne_convert_node (~70 Hz) |
 | `/velodyne_packets` | `velodyne_msgs/VelodyneScan` | velodyne_driver_node (~32 Hz) |
 | `/imu/data` | `sensor_msgs/Imu` | xsens_mti_node (100 Hz) |
@@ -272,11 +276,14 @@ This enables seamless handoff: when webui stops publishing, timeout expires and 
 
 ## Nav2 Config
 
-- **Planner:** SmacPlannerHybrid (DUBIN, min radius 2.31 m)
+- **Route Server:** nav2_route with GeoJSON campus road graph (52 nodes, 113 edges)
+- **Planner:** SmacPlannerHybrid (DUBIN, min radius 2.31 m) — fallback for off-graph planning
 - **Controller:** Regulated Pure Pursuit (lookahead 3-20 m)
+- **BT:** `navigate_route_graph.xml` — ComputeRoute → FollowPath (no spin/backup recovery)
 - **Local costmap:** VoxelLayer (LiDAR) + InflationLayer, 10x10 m
 - **Global costmap:** ObstacleLayer + InflationLayer, 100x100 m rolling
 - **Goal tolerance:** 2.0 m xy, 0.5 rad yaw
+- **Datum:** 34.059270, -117.820934 (fixed in navsat.yaml, used by route graph)
 
 ---
 
@@ -306,7 +313,7 @@ Phone-based joystick controller for bench testing. FastAPI + WebSocket + nipplej
 | `teleop.launch.py` | actuator_node + teleop_twist_keyboard |
 | `webui.launch.py` | actuator_node + webui_node |
 | `localization.launch.py` | EKF + navsat_transform |
-| `navigation.launch.py` | Full stack: sensors + localization + Nav2 + route_planner |
+| `navigation.launch.py` | Full stack: sensors + localization + Nav2 + route_server |
 
 ---
 
@@ -321,7 +328,9 @@ Phone-based joystick controller for bench testing. FastAPI + WebSocket + nipplej
 | `webui_params.yaml` | webui_node — port, SSL, max throttle |
 | `ekf.yaml` | robot_localization EKF |
 | `navsat.yaml` | navsat_transform_node |
-| `nav2_params.yaml` | Nav2 (planner, controller, costmaps, BT) |
+| `nav2_params.yaml` | Nav2 (planner, controller, costmaps, BT, route_server) |
+| `navigate_route_graph.xml` | BT tree using ComputeRoute (nav2_route) instead of ComputePathToPose |
+| `cpp_campus_graph.geojson` | Pre-built CPP campus road graph for nav2_route (map-frame coords) |
 | `cyclonedds.xml` | CycloneDDS config — shared memory disabled, socket buffer 10MB |
 | `ntrip_params.yaml` | ntrip_client — NTRIP caster host, port, mountpoint, credentials |
 
@@ -345,7 +354,7 @@ CycloneDDS (`cyclonedds.xml`):
 | `actuators/udp.py` | `avros_control/actuator_node.py` (UDP protocol) |
 | `control/pid.py` | `avros_control/actuator_node.py` (PID class) |
 | `control/ackermann_vehicle.py` | `avros_control/actuator_node.py` (Ackermann inverse) |
-| `planning/navigator.py` | `avros_navigation/route_planner_node.py` (OSMnx routing) |
+| `planning/navigator.py` | `nav2_route` route_server + `avros_navigation/scripts/generate_graph.py` |
 | `config/default.yaml` | Split into per-component YAML in `avros_bringup/config/` |
 | `webui/server_standalone.py` | `avros_webui/webui_node.py` (ROS2 ActuatorCommand instead of raw UDP) |
 | `webui/static/` | `avros_webui/static/` (voice features removed) |

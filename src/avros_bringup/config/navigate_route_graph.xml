@@ -1,0 +1,23 @@
+<!--
+  Route graph navigation BT for AVROS.
+  Uses ComputeRoute (nav2_route) instead of ComputePathToPose.
+  No spin/backup recovery — Ackermann vehicle cannot rotate in place.
+-->
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
+  <BehaviorTree ID="MainTree">
+    <PipelineSequence name="NavigateWithReplanning">
+      <RateController hz="0.5">
+        <Fallback>
+          <ReactiveSequence>
+            <Inverter>
+              <GlobalUpdatedGoal/>
+            </Inverter>
+            <IsPathValid path="{path}"/>
+          </ReactiveSequence>
+          <ComputeRoute goal="{goal}" path="{path}" use_poses="true"/>
+        </Fallback>
+      </RateController>
+      <FollowPath path="{path}" controller_id="FollowPath"/>
+    </PipelineSequence>
+  </BehaviorTree>
+</root>
