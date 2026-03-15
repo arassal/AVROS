@@ -11,6 +11,7 @@ bt_navigator:
     # BT XML path resolved at launch time via navigation.launch.py
     default_nav_to_pose_bt_xml: ""
     default_nav_through_poses_bt_xml: ""
+    goal_reached_tol: 3.0       # GoalReached BT condition tolerance (meters)
     navigators: ["navigate_to_pose", "navigate_through_poses"]
     navigate_to_pose:
       plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
@@ -30,6 +31,8 @@ bt_navigator:
       - nav2_recovery_node_bt_node
       - nav2_pipeline_sequence_bt_node
       - nav2_round_robin_node_bt_node
+      - nav2_goal_reached_condition_bt_node
+      - nav2_reactive_sequence_bt_node
 
 controller_server:
   ros__parameters:
@@ -44,7 +47,7 @@ controller_server:
     progress_checker:
       plugin: "nav2_controller::SimpleProgressChecker"
       required_movement_radius: 0.5
-      movement_time_allowance: 10.0
+      movement_time_allowance: 120.0    # 2 min — patient enough for pedestrians/temporary obstacles
 
     general_goal_checker:
       plugin: "nav2_controller::SimpleGoalChecker"
@@ -57,9 +60,10 @@ controller_server:
       desired_linear_vel: 1.5
       lookahead_dist: 3.0
       min_lookahead_dist: 3.0
-      max_lookahead_dist: 20.0
-      lookahead_time: 2.0
+      max_lookahead_dist: 8.0
+      lookahead_time: 1.5
       rotate_to_heading_angular_vel: 0.5
+      use_rotate_to_heading: false    # Ackermann vehicle cannot rotate in place
       use_velocity_scaled_lookahead_dist: true
       min_approach_linear_velocity: 0.3
       approach_velocity_scaling_dist: 3.0      # must be > xy_goal_tolerance for deceleration to work
@@ -71,7 +75,7 @@ controller_server:
       regulated_linear_scaling_min_speed: 0.3
       max_angular_accel: 1.0
       allow_reversing: false
-      max_robot_pose_search_dist: 999.0   # default is costmap extent (~14m); route paths can start far from robot
+      max_robot_pose_search_dist: 15.0    # keep Pure Pursuit on current path segment through turns
       transform_tolerance: 1.0
 
 planner_server:
@@ -80,7 +84,7 @@ planner_server:
     planner_plugins: ["GridBased"]
 
     GridBased:
-      plugin: "nav2_smac_planner/SmacPlannerHybrid"
+      plugin: "nav2_smac_planner::SmacPlannerHybrid"
       tolerance: 0.5
       downsample_costmap: false
       downsampling_factor: 1
@@ -110,11 +114,11 @@ behavior_server:
     cycle_frequency: 10.0
     behavior_plugins: ["backup", "drive_on_heading", "wait"]
     backup:
-      plugin: "nav2_behaviors/BackUp"
+      plugin: "nav2_behaviors::BackUp"
     drive_on_heading:
-      plugin: "nav2_behaviors/DriveOnHeading"
+      plugin: "nav2_behaviors::DriveOnHeading"
     wait:
-      plugin: "nav2_behaviors/Wait"
+      plugin: "nav2_behaviors::Wait"
 
 local_costmap:
   local_costmap:
@@ -124,8 +128,8 @@ local_costmap:
       global_frame: odom
       robot_base_frame: base_link
       rolling_window: true
-      width: 20
-      height: 20
+      width: 50
+      height: 50
       resolution: 0.2
       robot_radius: 0.8
       plugins: ["voxel_layer", "inflation_layer"]
@@ -224,9 +228,9 @@ route_server:
     base_frame: "base_link"
     route_frame: "map"
     max_planning_time: 2.0
+    prune_route: true
     path_density: 0.5
-    smooth_corners: true
-    smoothing_radius: 2.31          # match vehicle min turning radius
+    smooth_corners: false             # dense graph nodes follow road curves; smoothing can distort path
     graph_filepath: ""   # Overridden at launch time
     graph_file_loader: "GeoJsonGraphFileLoader"
     GeoJsonGraphFileLoader:

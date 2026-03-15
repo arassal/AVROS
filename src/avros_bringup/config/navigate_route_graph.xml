@@ -1,59 +1,28 @@
 <!--
-  Navigation BT for AVROS (Humble, BehaviorTree.CPP v3).
+  Navigation BT for AVROS — ComputeRoute once, then FollowPath with recovery.
+  BT.CPP v4 format for Jazzy.
+  No spin/backup recovery (Ackermann vehicle cannot rotate in place).
 
-  ComputeRoute (nav2_route) plans on the campus road graph and outputs a dense
-  nav_msgs/Path (controlled by route_server path_density param).  That path goes
-  straight to FollowPath (Regulated Pure Pursuit) — no intermediate planner needed.
-
-  Replanning: route is recomputed at 0.5 Hz, but only when the goal changes or
-  the current path becomes invalid (obstacle blocks it).
-
-  Recovery: ClearCostmaps + Wait (no Spin/BackUp — Ackermann vehicle).
+  ComputeRoute runs ONCE (Sequence, not PipelineSequence) so the path is
+  stable — Pure Pursuit can steer back to the path after overshooting turns.
+  ReactiveFallback stops FollowPath when the robot reaches the original
+  nav goal (handles route paths that extend past the goal to distant nodes).
 -->
-<root main_tree_to_execute="MainTree">
+<root BTCPP_format="4" main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
-    <RecoveryNode number_of_retries="6" name="NavigateRecovery">
-      <PipelineSequence name="NavigateWithReplanning">
-
-        <!-- Compute route on road graph; replan only when needed -->
-        <RateController hz="0.5">
-          <RecoveryNode number_of_retries="1" name="ComputeRoute">
-            <Fallback>
-              <!-- Skip replanning if goal unchanged AND path still valid -->
-              <ReactiveSequence>
-                <Inverter>
-                  <GlobalUpdatedGoal/>
-                </Inverter>
-                <IsPathValid path="{path}"/>
-              </ReactiveSequence>
-              <!-- Otherwise compute a new route -->
-              <ComputeRoute goal="{goal}" path="{path}" route="{route}" use_poses="true"/>
-            </Fallback>
-            <ClearEntireCostmap name="ClearGlobalCostmap"
-                                service_name="global_costmap/clear_entirely_global_costmap"/>
-          </RecoveryNode>
-        </RateController>
-
-        <!-- Follow the dense path from route_server -->
-        <RecoveryNode number_of_retries="1" name="FollowPath">
-          <FollowPath path="{path}" controller_id="FollowPath"/>
-          <ClearEntireCostmap name="ClearLocalCostmap"
-                              service_name="local_costmap/clear_entirely_local_costmap"/>
-        </RecoveryNode>
-
-      </PipelineSequence>
-      <ReactiveFallback name="RecoveryFallback">
-        <GoalUpdated/>
-        <RoundRobin name="RecoveryActions">
-          <Sequence name="ClearingActions">
-            <ClearEntireCostmap name="ClearLocalCostmap-Subtree"
-                                service_name="local_costmap/clear_entirely_local_costmap"/>
-            <ClearEntireCostmap name="ClearGlobalCostmap-Subtree"
-                                service_name="global_costmap/clear_entirely_global_costmap"/>
-          </Sequence>
-          <Wait wait_duration="5.0"/>
-        </RoundRobin>
-      </ReactiveFallback>
+    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
+      <Sequence name="NavigateSequence">
+        <ComputeRoute goal="{goal}" path="{path}" route="{route}" use_poses="true" error_code_id="{compute_path_error_code}"/>
+        <ReactiveFallback name="FollowUntilGoalReached">
+          <GoalReached goal="{goal}" global_frame="map" robot_base_frame="base_link"/>
+          <FollowPath path="{path}" controller_id="FollowPath" error_code_id="{follow_path_error_code}"/>
+        </ReactiveFallback>
+      </Sequence>
+      <Sequence name="RecoveryActions">
+        <ClearEntireCostmap name="ClearLocalCostmap" service_name="local_costmap/clear_entirely_local_costmap"/>
+        <ClearEntireCostmap name="ClearGlobalCostmap" service_name="global_costmap/clear_entirely_global_costmap"/>
+        <Wait wait_duration="3"/>
+      </Sequence>
     </RecoveryNode>
   </BehaviorTree>
 </root>

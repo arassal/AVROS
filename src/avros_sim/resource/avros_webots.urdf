@@ -12,30 +12,8 @@
     <!-- Vehicle control: cmd_vel → Car API (setCruisingSpeed/setSteeringAngle) -->
     <plugin type="avros_sim.avros_vehicle_driver.AvrosVehicleDriver" />
 
-    <!-- IMU: InertialUnit + Gyro + Accelerometer → /imu/data -->
-    <device reference="imu_inertial" type="InertialUnit">
-      <ros>
-        <topicName>/imu/data</topicName>
-        <frameName>imu_link</frameName>
-        <alwaysOn>true</alwaysOn>
-      </ros>
-    </device>
-
-    <device reference="imu_gyro" type="Gyro">
-      <ros>
-        <topicName>/imu/gyro</topicName>
-        <frameName>imu_link</frameName>
-        <alwaysOn>true</alwaysOn>
-      </ros>
-    </device>
-
-    <device reference="imu_accel" type="Accelerometer">
-      <ros>
-        <topicName>/imu/accel</topicName>
-        <frameName>imu_link</frameName>
-        <alwaysOn>true</alwaysOn>
-      </ros>
-    </device>
+    <!-- IMU: handled by avros_vehicle_driver plugin (combined Imu on /imu/data) -->
+    <!-- InertialUnit/Gyro/Accel devices read directly in plugin, not mapped here -->
 
     <!-- LiDAR: Webots VelodynePuck → /velodyne_points -->
     <device reference="velodyne" type="Lidar">

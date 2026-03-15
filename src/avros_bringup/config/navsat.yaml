@@ -17,7 +17,7 @@ navsat_transform:
     yaw_offset: 0.0
 
     zero_altitude: true
-    use_odometry_yaw: true        # Use yaw from global EKF odometry
+    use_odometry_yaw: false       # Use IMU yaw directly (avoids circular dependency with global EKF)
     wait_for_datum: true
     datum: [34.059270, -117.820934, 0.0]   # CPP campus — fixed origin for pre-built route graph
     publish_filtered_gps: true

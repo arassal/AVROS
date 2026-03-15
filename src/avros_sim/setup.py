@@ -20,6 +20,8 @@ setup(
             + glob(os.path.join('worlds', '.*.wbproj'))),
         (os.path.join('share', package_name, 'resource'),
             glob(os.path.join('resource', '*.urdf'))),
+        (os.path.join('share', package_name, 'config'),
+            glob(os.path.join('config', '*.yaml'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
