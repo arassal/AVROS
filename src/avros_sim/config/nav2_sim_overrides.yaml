@@ -15,9 +15,9 @@ bt_navigator:
     default_nav_through_poses_bt_xml: ""
     navigators: ["navigate_to_pose", "navigate_through_poses"]
     navigate_to_pose:
-      plugin: "nav2_bt_navigator/NavigateToPoseNavigator"
+      plugin: "nav2_bt_navigator::NavigateToPoseNavigator"
     navigate_through_poses:
-      plugin: "nav2_bt_navigator/NavigateThroughPosesNavigator"
+      plugin: "nav2_bt_navigator::NavigateThroughPosesNavigator"
     goal_reached_tol: 3.0       # GoalReached BT condition tolerance (meters)
 
 controller_server:
