@@ -31,11 +31,13 @@ def generate_launch_description():
         # CycloneDDS shared memory
         SetEnvironmentVariable(
             name='RMW_IMPLEMENTATION',
-            value='rmw_cyclonedds_cpp'
+            value='rmw_cyclonedds_cpp',
+            condition=IfCondition(LaunchConfiguration('use_cyclonedds')),
         ),
         SetEnvironmentVariable(
             name='CYCLONEDDS_URI',
-            value='file://' + cyclonedds_file
+            value='file://' + cyclonedds_file,
+            condition=IfCondition(LaunchConfiguration('use_cyclonedds')),
         ),
 
         DeclareLaunchArgument(
@@ -56,6 +58,16 @@ def generate_launch_description():
         DeclareLaunchArgument(
             'enable_realsense', default_value='true',
             description='Enable RealSense D455 camera'
+        ),
+
+        DeclareLaunchArgument(
+            'enable_xsens', default_value='true',
+            description='Enable Xsens MTi IMU/GNSS driver'
+        ),
+
+        DeclareLaunchArgument(
+            'use_cyclonedds', default_value='true',
+            description='Force CycloneDDS RMW implementation'
         ),
 
         # robot_state_publisher: URDF -> static TF
@@ -111,6 +123,7 @@ def generate_launch_description():
             name='xsens_mti_node',
             parameters=[xsens_config],
             output='screen',
+            condition=IfCondition(LaunchConfiguration('enable_xsens')),
         ),
 
         # NTRIP client for RTK corrections (GPGGA -> caster -> RTCM3)
