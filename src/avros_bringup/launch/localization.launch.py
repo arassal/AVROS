@@ -50,6 +50,16 @@ def generate_launch_description():
             description='Enable RealSense D455 camera'
         ),
 
+        DeclareLaunchArgument(
+            'enable_xsens', default_value='true',
+            description='Enable Xsens MTi IMU/GNSS driver'
+        ),
+
+        DeclareLaunchArgument(
+            'use_cyclonedds', default_value='true',
+            description='Force CycloneDDS RMW implementation'
+        ),
+
         # Include sensors launch
         IncludeLaunchDescription(
             PythonLaunchDescriptionSource(
@@ -60,6 +70,8 @@ def generate_launch_description():
                 'enable_ntrip': LaunchConfiguration('enable_ntrip'),
                 'enable_velodyne': LaunchConfiguration('enable_velodyne'),
                 'enable_realsense': LaunchConfiguration('enable_realsense'),
+                'enable_xsens': LaunchConfiguration('enable_xsens'),
+                'use_cyclonedds': LaunchConfiguration('use_cyclonedds'),
             }.items(),
         ),
 
